@@ -16,7 +16,7 @@ class SigProfiler(object):
                  nmf_solver='mu',
                  nmf_random_state=None,
                  km_max_iter=1000,
-                 km_tol = 1e-4,
+                 km_tol = 1e-9,
                  verbose=0
                  ):
 
@@ -57,7 +57,7 @@ class SigProfiler(object):
             self.compute_consensus_signatures(k)
 
         # 4) Select K by using most 'reproducible' rank
-        self.K = min(self.silhouette_scores, key=self.silhouette_scores.get)
+        self.K = max(self.silhouette_scores, key=self.silhouette_scores.get)
         if self.verbose >= 1:
             print('* best consensus rank:', self.K)
         self.P = self.P_centroids[self.K]
@@ -66,11 +66,13 @@ class SigProfiler(object):
     def compute_consensus_signatures(self, K):
         Ps = self.Ps[K]
         km = KMeans(n_clusters=K, max_iter=self.km_max_iter, tol=self.km_tol)
-        Ps = np.hstack(Ps)
+        Ps = np.vstack(Ps)
+        print(Ps.shape)
         km.fit(Ps)
-
+        print(km.n_iter_)
         P_centroid = km.cluster_centers_
         labels = km.labels_
+        print(labels)
 
         cosine_dists = cosine_distances(Ps)
         self.silhouette_scores[K] = silhouette_score(cosine_dists, labels, 
@@ -84,8 +86,8 @@ class SigProfiler(object):
         for i in range(self.bootstrap_n):
             if self.verbose >= 2:
                 print('\t - computing nmf for bootstrapped sample %d with K=%d' % (i, K))
-            X = self.bootstrap(X)
-            P_i, E_i, err_i = self.nmf_fit(X, K)
+            X_ = self.bootstrap(X)
+            P_i, E_i, err_i = self.nmf_fit(X_, K)
             self.Ps[K].append(P_i)
             self.Es[K].append(E_i)
             self.errs[K].append(err_i)
@@ -95,12 +97,12 @@ class SigProfiler(object):
         # X has shape (N, M)
 
         row_sums = np.sum(X, axis=1, keepdims=True)
+
         ps = X / row_sums
         X_ = [np.random.multinomial(n, ps[i]) 
               for i, n in enumerate(row_sums)]
         return np.asarray(X_, dtype=int)
 
-    
     def nmf_fit(self, X, K):
         nmf = NMF(n_components=K,
                    solver=self.nmf_solver,
@@ -109,9 +111,9 @@ class SigProfiler(object):
                    max_iter=self.nmf_max_iter,
                    verbose=max(self.verbose - 2, 0))
         E = nmf.fit_transform(X)
-        P = nmf.components_.T
-        norm = np.sum(P, axis=0)
-        E *= norm
+        P = nmf.components_
+        norm = np.sum(P, axis=1, keepdims=True)
+        E *= norm.reshape(-1)
         P /= norm
         err = nmf.reconstruction_err_
         if nmf.n_iter_ >= (self.nmf_max_iter - 1):

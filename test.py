@@ -22,8 +22,8 @@ class TestSigProfiler(unittest.TestCase):
         self.assertEqual(E.shape, (self.N, K))
 
         # Check that P is indeed a p-dist
-        self.assertTrue(np.allclose(np.sum(P, axis=0), 
-                       np.ones_like(np.sum(P, axis=0))))
+        self.assertTrue(np.allclose(np.sum(P, axis=1), 
+                       np.ones_like(np.sum(P, axis=1))))
         #self.assertLess(err, 1e-4)
 
     def test_bootstrap(self):
