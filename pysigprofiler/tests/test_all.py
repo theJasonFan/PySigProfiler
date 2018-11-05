@@ -78,8 +78,8 @@ class TestSigProfilerIntegration(unittest.TestCase):
                          verbose=2)
         P = sp.fit(self.X)
         # Check that P is indeed a p-dist
-        self.assertTrue(np.allclose(np.sum(P, axis=0), 
-                       np.ones_like(np.sum(P, axis=0))))
+        self.assertTrue(np.allclose(np.sum(P, axis=1), 
+                       np.ones_like(np.sum(P, axis=1))))
 
 if __name__ == '__main__':
     unittest.main()

@@ -180,7 +180,7 @@ class SigProfiler(object):
         '''
         Compute and save consensus signatures for rank K
         '''
-        _eps = 1e-17
+        _eps = 0
         Ps = self.Ps[K]
         km = KMeans(n_clusters=K, max_iter=self.km_max_iter, tol=self.km_tol)
         Ps = np.vstack(Ps)
@@ -198,7 +198,7 @@ class SigProfiler(object):
         P_centroid = np.where(P_centroid < 0, _eps, P_centroid)
 
         # We also have to make sure that the centroids are indeed p-dists
-        P_centroid /= np.sum(P_centroid, axis=0)
+        P_centroid /= np.sum(P_centroid, axis=1, keepdims=True)
         self.P_centroids[K] = P_centroid
     
     def compute_bootstrapped_nmf_runs(self, X, K):
