@@ -1,0 +1,1 @@
+from pysigprofiler.tests.test_all import *

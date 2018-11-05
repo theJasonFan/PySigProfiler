@@ -1,5 +1,5 @@
 import numpy as np
-from sigprofiler import SigProfiler
+from pysigprofiler import SigProfiler
 import unittest
 
 class TestSigProfiler(unittest.TestCase):
@@ -47,6 +47,8 @@ class TestSigProfiler(unittest.TestCase):
         E_, err = sp.compute_exposure(X, P)
         self.assertEqual(np.linalg.norm(X - E_.dot(P)), err)
         self.assertTrue(np.all(E == np.round(E_)))
+        
+class TestSigProfilerIntegration(unittest.TestCase):
     '''
     Class for integration tests
     Note: it's hard to test for correctness of boostrapped nmf procedure
