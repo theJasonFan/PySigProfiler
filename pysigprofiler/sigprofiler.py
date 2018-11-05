@@ -143,10 +143,9 @@ class SigProfiler(object):
             self.E_centroids[k] = E_k
             self.consensus_errs[k] = err_k
 
-        # 5) Select K by using most 'reproducible' rank
+        # 5) TODO: update this with another heuristic
+        #  Select K by using most 'reproducible' rank
         self.K = max(self.silhouette_scores, key=self.silhouette_scores.get)
-        if self.verbose >= 1:
-            print('* best consensus rank:', self.K)
         self.P = self.P_centroids[self.K]
         return self.P
     
