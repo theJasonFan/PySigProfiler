@@ -1,6 +1,6 @@
 from sklearn.metrics.pairwise import cosine_distances
 from sklearn.metrics import silhouette_score
-from sklearn.decomposition import NMF
+from sklearn.decomposition import NMF, non_negative_factorization
 from sklearn.cluster import KMeans
 from collections import defaultdict
 import numpy as np
@@ -97,7 +97,8 @@ class SigProfiler(object):
         E: array, [n_samples, n_components]
             The exposures correspoding to best signatures
         '''
-
+        if nmf_beta_loss != 'frobenius':
+            raise NotImplementedError
         self.rank_range = rank_range
         self.bootstrap_n = bootstrap_n
         self.nmf_max_iter = nmf_max_iter
@@ -116,6 +117,7 @@ class SigProfiler(object):
         self.P_centroids = {}
         self.E_centroids = {}
         self.silhouette_scores = {}
+        self.consensus_errs = {}
 
         # Fitted params
         self.__X = None
@@ -130,38 +132,74 @@ class SigProfiler(object):
         self.__X = X
         # 1) iterate over rank range
         for k in self.rank_range:
-
             # 2) generate bootstrapped samples
             self.compute_bootstrapped_nmf_runs(self.__X, k)
-
             # 3) cluster anc compute consensus signatures
             self.compute_consensus_signatures(k)
 
-        # 4) Select K by using most 'reproducible' rank
+        # 4) Compute Exposures and reconstruction errors from P centroids
+        for k in self.rank_range:
+            E_k, err_k = self.compute_exposure(self.__X, self.P_centroids[k])
+            self.E_centroids[k] = E_k
+            self.consensus_errs[k] = err_k
+
+        # 5) Select K by using most 'reproducible' rank
         self.K = max(self.silhouette_scores, key=self.silhouette_scores.get)
         if self.verbose >= 1:
             print('* best consensus rank:', self.K)
         self.P = self.P_centroids[self.K]
         return self.P
+    
+    def compute_exposure(self, X, P):
+        ''' 
+        Compute exposures from given signatures
+        '''
+
+        # Initialize NMF object with components equal to the signatures.
+        # then run nmf.transform(X).
+        K, M = P.shape
+
+        # A hacky way to call sklearn's nmf function...
+        nmf =  self._new_NMF_model(K)
+        E, P_, n_iter_ = non_negative_factorization(
+            X=X, W=None, H=P, n_components=K,
+            init=nmf.init, update_H=False, solver=nmf.solver,
+            beta_loss=nmf.beta_loss, tol=nmf.tol, max_iter=nmf.max_iter,
+            alpha=nmf.alpha, l1_ratio=nmf.l1_ratio, regularization='both',
+            random_state=nmf.random_state, verbose=nmf.verbose,
+            shuffle=nmf.shuffle)
+
+        assert(np.allclose(P_, P))
+
+        # TODO: add new feature to change norm to be
+        # KL or itakaru-saito divergence
+        err = np.linalg.norm(X - E.dot(P), 'fro')
+        return E, err
         
     def compute_consensus_signatures(self, K):
         '''
         Compute and save consensus signatures for rank K
         '''
+        _eps = 1e-17
         Ps = self.Ps[K]
         km = KMeans(n_clusters=K, max_iter=self.km_max_iter, tol=self.km_tol)
         Ps = np.vstack(Ps)
-        print(Ps.shape)
         km.fit(Ps)
-        print(km.n_iter_)
         P_centroid = km.cluster_centers_
         labels = km.labels_
-        print(labels)
 
         cosine_dists = cosine_distances(Ps)
         self.silhouette_scores[K] = silhouette_score(cosine_dists, labels, 
                                                      metric='precomputed')
-        self.P_centroids[K] = P_centroid / np.sum(P_centroid, axis=0)
+        
+        # Centroids are used in compute_exposures, but centroids can have
+        # 'zero' values that are negative. We have to fix this before 
+        # storing the consensus P matrices
+        P_centroid = np.where(P_centroid < 0, _eps, P_centroid)
+
+        # We also have to make sure that the centroids are indeed p-dists
+        P_centroid /= np.sum(P_centroid, axis=0)
+        self.P_centroids[K] = P_centroid
     
     def compute_bootstrapped_nmf_runs(self, X, K):
         '''
@@ -200,12 +238,7 @@ class SigProfiler(object):
         '''
         Compute NMF with rank K on given matrix X
         '''
-        nmf = NMF(n_components=K,
-                   solver=self.nmf_solver,
-                   beta_loss=self.nmf_beta_loss,
-                   tol=self.nmf_tol,
-                   max_iter=self.nmf_max_iter,
-                   verbose=max(self.verbose - 2, 0))
+        nmf = self._new_NMF_model(K)
         E = nmf.fit_transform(X)
         P = nmf.components_
         norm = np.sum(P, axis=1, keepdims=True)
@@ -215,3 +248,12 @@ class SigProfiler(object):
         if nmf.n_iter_ >= (self.nmf_max_iter - 1):
             warnings.warn('NMF ran for max iterations')
         return P, E, err
+    
+    def _new_NMF_model(self, n_components):
+        nmf = NMF(n_components=n_components,
+                   solver=self.nmf_solver,
+                   beta_loss=self.nmf_beta_loss,
+                   tol=self.nmf_tol,
+                   max_iter=self.nmf_max_iter,
+                   verbose=max(self.verbose - 2, 0))
+        return nmf

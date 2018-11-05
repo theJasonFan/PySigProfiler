@@ -37,8 +37,16 @@ class TestSigProfiler(unittest.TestCase):
         Xs = [sp.bootstrap(self.X) for _ in range(self.bootstrap_test_n)]
         X_expected = np.mean(Xs, axis=0)
         self.assertLess(np.sum(X_expected - self.X), self.tol)
-
-class TestSigProfiler_integration(unittest.TestCase):
+    
+    def test_compute_exposure(self):
+        K = 4
+        E = np.random.randint(1, 10, size = (self.N, K))
+        P = np.random.randint(1, 10, size = (K, self.M))
+        X = E.dot(P)
+        sp = SigProfiler()
+        E_, err = sp.compute_exposure(X, P)
+        self.assertEqual(np.linalg.norm(X - E_.dot(P)), err)
+        self.assertTrue(np.all(E == np.round(E_)))
     '''
     Class for integration tests
     Note: it's hard to test for correctness of boostrapped nmf procedure
